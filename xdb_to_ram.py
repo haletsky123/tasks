@@ -17,7 +17,11 @@ class XdbToRam:
         self.schema = Schema()
 
     def parse(self):
+        import time
+        start_time = time.time()
+        print("Парсим....")
         self.__fetch_data()
+        print("Выполнено за --- %s секунд" % (time.time() - start_time))
         return self.schema
 
     def __fetch_data(self):
@@ -129,8 +133,11 @@ class XdbToRam:
                     table.temporal_mode = attribute.value
                 elif attribute.name == 'means':
                     table.means = attribute.value
+                elif attribute.name == "ht_table_flags":
+                    table.ht_table_flags = attribute.value
+                elif attribute.name == "access_level":
+                    table.access_level = attribute.value
                 elif attribute.name == 'props':
-
                     for p in attribute.value.split(","):
 
                         p = p.strip()  # Удаление пробелов в начале и конце строки
