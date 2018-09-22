@@ -14,3 +14,4 @@ for table in xtr.schema.tables:
 
 file = os.path.abspath('materials') + '/tasks.dbd'
 rtd = RamToDbd (file, xtr.schema)
+rtd.generate()
