@@ -1,6 +1,8 @@
 from xdb_to_ram import *
 from ram_to_xdb import *
 from ram_to_dbd import *
+import dbd_to_ram
+
 file = os.path.abspath('materials/tasks.xdb')
 xtr =  XdbToRam(file)
 xtr.parse()
@@ -15,3 +17,8 @@ for table in xtr.schema.tables:
 file = os.path.abspath('materials') + '/tasks.dbd'
 rtd = RamToDbd (file, xtr.schema)
 rtd.generate()
+
+file = os.path.abspath('materials') + '/tasks.dbd'
+ram_schema = DbdToRam(file)
+dict = ram_schema.parse()
+print(dict)
