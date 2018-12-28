@@ -5,7 +5,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 class PostgreDB:
     def __init__(self, name, password, user):
         try:
-            self.con = ps2.connect(dbname=name, user=user, host='localhost', password=password)
+            self.con = ps2.connect(dbname=name, user=user, host='', password=password)
             self.con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             cur = self.con.cursor()
             cur.execute('CREATE DATABASE ' + name)
@@ -25,4 +25,5 @@ class PostgreDB:
 
 
 db = PostgreDB('PosgreDB', 'Hysa2_3pf', 'comp1')
+db.close_connection()
 
