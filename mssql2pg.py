@@ -4,12 +4,12 @@ import postgresql
 
 from db import mssql_queries, sqlite_queries
 from db.config import mssql_url, result_path, postgressql_url
-from dbd_module.dbd2ram import DBDownloader
-from dbd_module.mssql2ram import MSSQLDownloader
-from ram_module.ram2dbd import DBUploader
-from ram_module.ram2dbd_postgres import DBInitialisator
+from modules.dbd_module.dbd2ram import DBDownloader
+from modules.dbd_module.mssql2ram import MSSQLDownloader
+from modules.ram_module.ram2dbd import DBUploader
+from modules.ram_module.ram2dbd_postgres import DBInitialisator
 from data_transfering.data_transfering import DataTransfering
-from ram_module.ram2xml import Converter
+from modules.ram_module.ram2xml import Converter
 from utils.writer import Writer
 
 parser = argparse.ArgumentParser(description='GENERATING DDL INSTRUCTIONS FOR CREATING EMPTY POSTGRESQL '

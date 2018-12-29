@@ -3,10 +3,10 @@ import unittest
 from codecs import open as open
 from db import sqlite_queries
 from db.config import test_result_path, resourses_path
-from dbd_module.dbd2ram import DBDownloader
-from ram_module.ram2dbd import DBUploader
-from ram_module.ram2xml import Converter
-from xml_module.xml2ram import Parser
+from modules.dbd_module.dbd2ram import DBDownloader
+from modules.ram_module.ram2dbd import DBUploader
+from modules.ram_module.ram2xml import Converter
+from modules.xml_module.xml2ram import Parser
 
 
 class ParsingTest(unittest.TestCase):
