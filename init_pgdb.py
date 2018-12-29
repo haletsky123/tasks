@@ -4,11 +4,11 @@ import postgresql
 
 from db import sqlite_queries
 from db.config import postgressql_url, result_path
-from dbd_module.dbd2ram import DBDownloader
-from ram_module.ram2dbd_postgres import DBInitialisator
+from modules.dbd_module.dbd2ram import DBDownloader
+from modules.ram_module.ram2dbd_postgres import DBInitialisator
 # from utils.writer import Writer
 from utils.writer import Writer
-from xml_module.xml2ram import Parser
+from modules.xml_module.xml2ram import Parser
 
 parser = argparse.ArgumentParser(description='CREATING EMPTY POSTGRESQL DATABASE')
 parser.add_argument('--db', type=str, help="Path to db file")

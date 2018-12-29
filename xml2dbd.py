@@ -1,7 +1,7 @@
 import argparse
 from db import sqlite_queries
-from ram_module.ram2dbd import DBUploader
-from xml_module.xml2ram import Parser
+from modules.ram_module.ram2dbd import DBUploader
+from modules.xml_module.xml2ram import Parser
 # import sys
 
 # CONVERTING XML TO DBD

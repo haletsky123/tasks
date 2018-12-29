@@ -1,7 +1,7 @@
 import argparse
 from db import sqlite_queries
-from dbd_module.dbd2ram import DBDownloader
-from ram_module.ram2xml import Converter
+from modules.dbd_module.dbd2ram import DBDownloader
+from modules.ram_module.ram2xml import Converter
 
 # DOWNLOADING DATA FROM DBD TO XML
 
