@@ -12,6 +12,7 @@ class DBInitialisator:
         Generate ddl instructions to create postgresql database
 
     """
+    _FOREIGNS = []
 
     def generate_ddl(self, schema: Schema):
         scripts = []
@@ -38,9 +39,10 @@ class DBInitialisator:
                 primary.append(pr)
             if fr !='':
                 foreign.append(fr)
+                self._FOREIGNS.append(fr)
 
         scripts.append("\n".join(primary))
-        scripts.append('\n'.join(foreign))
+        # scripts.append('\n'.join(foreign))
         scripts.append('COMMIT;')
 
         # queries = '\n'.join(scripts)

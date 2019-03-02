@@ -54,6 +54,11 @@ conn.execute('\n '.join(ddl))
 
 data_transfer = DataTransfering(db_name, mssql_url, pg_url + '/' + db_name.lower())
 
+query = "BEGIN TRANSACTION;"
+query += pg_init._FOREIGNS
+query += "COMMIT;"
+conn.execute(query)
+
 schemas = {}
 schemas[0] = schema
 print("start data transferring")
