@@ -1,285 +1,165 @@
-from utils.exceptions import ParseError, ItemNotFoundException
-from utils import minidom_fixed as dom
-from utils.writer import Writer
+from additions.order_plugin import *  # minidom и отредактированные средства для записи в нужном порядке
+from additions.classes import *  # Загружаем классы метаданных
 
+class XmlMaker:
+    def __init__(self, ram):
+        self.ram = ram  # Подаем ram-представление
+        # Создаем xml-документ
+        self.root = minidom.Document()
 
-class Converter:
-    def __init__(self):
-        self.xml = dom.Document()
+    def make_xdb(self):
+        # Переопределение методов класса minidom.Element.
+        minidom.Element.writexml = new_writexml
+        minidom.Element._ensure_attributes = new_ensure_attributes
+        # Создаем главный узел схемы
+        schema_node = self.root.createElement("dbd_schema")
+        # Заполняем атрибуты схемы
+        for attr in Schema.schema_attr:
+            if getattr(self.ram, attr) is not None:
+                schema_node.setAttribute(attr, str(getattr(self.ram, attr)))
 
-    def create_schema(self, schema):
-        """
-        Create nodes "dbd_schema" from Schema object
-        :param schema: Schema
-        :return:
-        """
-        node = self.xml.createElement("dbd_schema")
+        self.root.appendChild(schema_node)  # Добавляем главный узел в документ
+        schema_node.appendChild(self.root.createElement("custom"))  # Тег custom в xml таблице
+        # Добавляем в главный узел списки доменов и таблиц
+        schema_node.appendChild(self.fill_in_domains())
+        schema_node.appendChild(self.fill_in_tables())
 
-        if schema.fulltext_engine is not None:
-            node.setAttribute("fulltext_engine", schema.fulltext_engine)
-        if schema.version is not None:
-            node.setAttribute("version", schema.version)
-        if schema.name is not None:
-            node.setAttribute("name", schema.name)
-        if schema.descr is not None:
-            node.setAttribute("description", schema.descr)
+        return self.root
 
-        return node
+    def fill_in_domains(self):
+        main_domain_node = self.root.createElement("domains")  # Создаем узел-контейнер доменов
+        # Проходим по данным доменов в памяти и заполняем узлы
+        for domain in self.ram.domains:
+            if not domain.unnamed:
+                domain_node = self.root.createElement("domain")
 
+                for attr in Domain.domain_attr:
+                    if getattr(domain, attr) is not None:
+                        domain_node.setAttribute(attr, str(getattr(domain, attr)))
+                    if attr == "precision":
+                        props = list()  # Создаем список props домена
+                        for prop in Domain.domain_props:  # Смотрим какие props имеют значение True
+                            if getattr(domain, prop):
+                                props.append(prop)
+                        if props:  # Заполняем список
+                            domain_node.setAttribute("props", ", ".join(props))
 
-    def create_domain(self, domains):
-        """
-        Create nodes "domain" from list of Domain objects
-        :param domains: Domain
-        :return:
-        """
-        for domain in domains.values():
-            node = self.xml.createElement("domain")
-            if domain.name is not None:
-                node.setAttribute("name", domain.name)
-            if domain.descr is not None:
-                node.setAttribute("description", domain.descr)
-            if domain.type is not None:
-                node.setAttribute("type", domain.type)
-            if domain.align is not None:
-                node.setAttribute("align", domain.align)
-            if domain.width is not None:
-                node.setAttribute("width", str(domain.width))
-            if domain.length is not None:
-                node.setAttribute("length", str(domain.length))
-            if domain.precision is not None:
-                node.setAttribute("precision", str(domain.precision))
-            properties = []
-            if domain.show_null:
-                properties.append("show_null")
-            if domain.summable:
-                properties.append("summable")
-            if domain.case_sensitive:
-                properties.append("case_sensitive")
-            if domain.show_lead_nulls:
-                properties.append("show_lead_nulls")
-            if domain.thousands_separator:
-                properties.append("thousands_separator")
+                main_domain_node.appendChild(domain_node)  # Добавляем готовый узел в список доменов
+        return main_domain_node  # Возвращаем узел контейнер
 
-            if len(properties) != 0:
-                node.setAttribute("props", ", ".join(properties))
+    def fill_in_tables(self):
+        main_table_node = self.root.createElement("tables")
+        for table in self.ram.tables:
+            table_node = self.root.createElement("table")
 
-            if domain.char_length is not None:
-                node.setAttribute("char_length", str(domain.char_length))
-            if domain.length is not None:
-                node.setAttribute("length", str(domain.length))
-            if domain.scale is not None:
-                node.setAttribute("scale", str(domain.scale))
-            yield node
+            for attr in Table.table_attr:
+                if getattr(table, attr) is not None:
+                    table_node.setAttribute(attr, str(getattr(table, attr)))
+                if attr == "description":
+                    props = list()  # Создаем список props таблицы
+                    for prop in Table.table_props:  # Смотрим какие props имеют значение True
+                        if getattr(table, prop):
+                            props.append(prop)
+                    if props:  # Заполняем список
+                        table_node.setAttribute("props", ", ".join(props))
 
+            # Создаем и заполняем узлы контейнеры fields, constraints, indexes данными из памяти
+            fields = self.fill_in_fields(table)
+            constraints = self.fill_in_constraints(table)
+            indexes = self.fill_in_indexes(table)
 
-    def create_table(self, tables):
-        """
-        Create nodes "table" from list of Table objects
-        :param tables: Table
-        :return:
-        """
-        for table in tables:
-            node = self.xml.createElement("table")
-            if table.name is not None:
-                node.setAttribute("name", table.name)
-            if table.descr is not None:
-                node.setAttribute("description", table.descr)
+            # Каждый из узлов в контейнере добавляем к текущей таблице
+            for field in fields:
+                table_node.appendChild(field)
+            for constraint in constraints:
+                table_node.appendChild(constraint)
+            for index in indexes:
+                table_node.appendChild(index)
 
-            properties = []
-            if table.add:
-                properties.append("add")
-            if table.edit:
-                properties.append("edit")
-            if table.delete:
-                properties.append("delete")
+            main_table_node.appendChild(table_node)
+        return main_table_node
 
-            if len(properties) != 0:
-                node.setAttribute("props", ", ".join(properties))
+    def fill_in_fields(self, table):
+        fields = []
+        for field in table.fields:
+            # Создаём дочерний узел
+            field_node = self.root.createElement("field")
+            if not field.domain.unnamed:
+                for attr in Field.field_attr:
+                    if attr == "domain":
+                        field_node.setAttribute(attr, str(field.domain.name))
+                    elif getattr(field, attr) is not None:
+                        field_node.setAttribute(attr, str(getattr(field, attr)))
+                    if attr == "description":
+                        props = list()  # Создаем список props поля
+                        for prop in Field.field_props:  # Смотрим какие props имеют значение True
+                            if getattr(field, prop):
+                                props.append(prop)
+                        if props:  # Заполняем список
+                            field_node.setAttribute("props", ", ".join(props))
+            else:
 
-            if len(table.fields) != 0:
-                for field in self.create_field(table.fields):
-                    node.appendChild(field)
+                for attr in Field.field_attr:
+                    if (getattr(field, attr) is not None) and (attr != "domain"):
+                        field_node.setAttribute(attr, str(getattr(field, attr)))
+                    if (attr == "domain"):
+                        for dom_attr in Domain.domain_attr:
+                            if getattr(field.domain, dom_attr) is not None:
+                                field_node.setAttribute("domain." + dom_attr, str(getattr(field.domain, dom_attr)))
+                            if dom_attr == "precision":
+                                props = list()  # Создаем список props поля
+                                for prop in Domain.domain_props:  # Смотрим какие props имеют значение True
+                                    if getattr(field.domain, prop):
+                                        props.append(prop)
+                                if props:  # Заполняем список
+                                    field_node.setAttribute("domain.props", ", ".join(props))
+                    if attr == "description":
+                        props = list()  # Создаем список props поля
+                        for prop in Field.field_props:  # Смотрим какие props имеют значение True
+                            if getattr(field, prop):
+                                props.append(prop)
+                        if props:  # Заполняем список
+                            field_node.setAttribute("props", ", ".join(props))
 
-            if len(table.constraints) != 0:
-                for constraint in self.create_constraint(table.constraints):
-                    node.appendChild(constraint)
+            fields.append(field_node)
+        return fields
 
-            if len(table.indexes) != 0:
-                for index in self.create_index(table.indexes):
-                    node.appendChild(index)
+    def fill_in_indexes(self, table):
+        indexes = []
 
-            yield node
+        for index in table.indexes:
+            index_node = self.root.createElement("index")
 
+            for attr in Index.index_attr:
+                if getattr(index, attr) is not None:
+                    index_node.setAttribute(attr, str(getattr(index, attr)))
+                if attr == "field":
+                    props = list()  # Создаем список props индекса
+                    for prop in Index.index_props:  # Смотрим какие props имеют значение True
+                        if getattr(index, prop):
+                            props.append(prop)
+                    if props:  # Заполняем список
+                        index_node.setAttribute("props", ", ".join(props))
 
-    def create_field(self, fields):
-        """
-        Create nodes "field" from list of Field objeccts
-        :param fields: Field
-        :return:
-        """
-        for field in fields:
-            node = self.xml.createElement("field")
-            if field.name is not None:
-                node.setAttribute("name", field.name)
-            if field.rname is not None:
-                node.setAttribute("rname", field.rname)
-            if field.domain is not None:
-                if type(field.domain) is str:
-                    node.setAttribute("domain", field.domain)
-                else:
-                    if field.domain.name:
-                        node.setAttribute("domain", field.domain.name)
-                    else:
-                        node.setAttribute("domain.char_length",field.domain.char_length)
-                        node.setAttribute("domain.precision", field.domain.precision)
-                        node.setAttribute("domain.scale", field.domain.scale)
-                        node.setAttribute("domain.type", field.domain.type)
-            if field.descr is not None:
-                node.setAttribute("description", field.descr)
+            indexes.append(index_node)
+        return indexes
 
+    def fill_in_constraints(self, table):
+        constraints = []
 
+        for constraint in table.constraints:
+            constraint_node = self.root.createElement("constraint")
 
-            properties = []
-            if field.input:
-                properties.append("input")
-            if field.edit:
-                properties.append("edit")
-            if field.show_in_grid:
-                properties.append("show_in_grid")
-            if field.show_in_details:
-                properties.append("show_in_details")
-            if field.is_mean:
-                properties.append("is_mean")
-            if field.autocalculated:
-                properties.append("autocalculated")
-            if field.required:
-                properties.append("required")
+            for attr in Constraint.constraint_attr:
+                if getattr(constraint, attr) is not None:
+                    constraint_node.setAttribute(attr, str(getattr(constraint, attr)))
+                if attr == "expression":
+                    props = list()  # Создаем список props ограничения
+                    for prop in Constraint.constraint_props:  # Смотрим какие props имеют значение True
+                        if getattr(constraint, prop):
+                            props.append(prop)
+                    if props:  # Заполняем список
+                        constraint_node.setAttribute("props", ", ".join(props))
 
-            if len(properties) != 0:
-                node.setAttribute("props", ", ".join(properties))
-
-            yield node
-
-
-    def create_constraint(self, constraints):
-        """
-        Create nodes "constraint" from list of Constraint objects
-        :param constraints: Constraint
-        :return:
-        """
-        list = []
-        for constraint in constraints:
-            node = self.xml.createElement("constraint")
-            if constraint.name is not None:
-                node.setAttribute("name", constraint.name)
-            if constraint.kind is not None:
-                node.setAttribute("kind", constraint.kind)
-            if len(constraint.details) == 1:
-                node.setAttribute("items", constraint.details[0].value)
-            if constraint.items:
-                node.setAttribute("items", constraint.items)
-            if constraint.reference is not None:
-                node.setAttribute("reference", str(constraint.reference))
-            if constraint.expression is not None:
-                node.setAttribute('expression', constraint.expression)
-
-            properties = []
-            if constraint.has_value_edit:
-                properties.append("has_value_edit")
-            if constraint.cascading_delete == False:
-                properties.append("cascading_delete")
-            if constraint.cascading_delete == True:
-                properties.append("full_cascading_delete")
-
-            if len(properties) != 0:
-                node.setAttribute("props", ", ".join(properties))
-
-            # for detail in constraint.details:
-            #     detail_output = self._create_constraint_detail(detail)
-            #     node.appendChild(detail_output)
-            list.append(node)
-        return list
-
-
-    def create_index(self, indexes):
-        """
-        Create nodes "index" from list of Index objects
-        :param indexes: Index
-        :return:
-        """
-        nodes = []
-        for index in indexes:
-            node = self.xml.createElement("index")
-
-            if index.name:
-                node.setAttribute('name', index.name)
-            if len(index.details) == 1:
-                node.setAttribute('field', index.details[0].value)
-            if index.items:
-                node.setAttribute('items', index.items)
-
-            props = []
-
-            if index.local:
-                props.append('local')
-            if index.kind == 'uniqueness':
-                props.append('uniqueness')
-            if index.kind == 'fulltext':
-                props.append('fulltext')
-            if len(props) > 0:
-                node.setAttribute('props', ', '.join(props))
-
-            # for detail in index.details:
-            #     detail_output = self._create_index_detail(detail)
-            #     node.appendChild(detail_output)
-            nodes.append(node)
-        return nodes
-
-
-    def convertRam2Xml(self, schema, xml_path):
-        """
-        Create ram representation of incoming Schema object
-        :param schema:
-        :param xml_path:
-        :return:
-        """
-        if schema is None:
-            raise ParseError("Schema not found", self)
-        node = self.create_schema(schema)
-        node.appendChild(self.xml.createElement("custom"))
-        if schema.domains:
-            domains = self.xml.createElement("domains")
-            for domain in self.create_domain(schema.domains):
-                domains.appendChild(domain)
-            node.appendChild(domains)
-
-        tables = self.xml.createElement("tables")
-        for table in self.create_table(schema.tables):
-            tables.appendChild(table)
-
-        node.appendChild(tables)
-        try:
-            self.xml.appendChild(node)
-            if xml_path:
-                Writer.write_xml(xml_path,self.xml)
-        except Exception:
-            raise ItemNotFoundException("domains, tables", schema.name)
-
-
-
-    def _create_constraint_detail(self, detail):
-        detail_dom = self.xml.createElement('item')
-        if detail.value:
-            detail_dom.setAttribute('value', detail.value)
-        return detail_dom
-
-    def _create_index_detail(self, detail):
-        detail_dom = self.xml.createElement('item')
-        if detail.value:
-            detail_dom.setAttribute('value', detail.value)
-        if detail.expression:
-            detail_dom.setAttribute('expression', detail.expression)
-        if detail.descend:
-            detail_dom.setAttribute('descend', detail.descend)
-        return detail_dom
+            constraints.append(constraint_node)
+        return constraints

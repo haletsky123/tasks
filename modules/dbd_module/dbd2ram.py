@@ -1,379 +1,141 @@
-import sqlite3
-import pyodbc
-
-from modules.ram_module.ram_structure import Schema, IndexDetail, ConstraintDetail, Index, Constraint, Field, Table, Domain
-from utils.exceptions import ParseError
-
-
-class DBDownloader:
-    """
-    Downloading data to xml from sqlite database
-    Data represents as map<column_name,value>
-    """
-    def __init__(self, queries, db_path, db_url):
-        self.config = queries
-
-        if db_path:
-            self.conn = sqlite3.connect(db_path)
-        if db_url:
-            self.conn = pyodbc.connect(db_url)
-
-        self.cursor = self.conn.cursor()
-
-    def __exit__(self):
-        self.conn.close()
-
-    def _get_result(self):
-        """
-        Get last result executing query
-        :return:
-        """
-        columns = [column[0] for column in self.cursor.description]
-        results = []
-        for row in self.cursor.fetchall():
-            results.append(dict(zip(columns, row)))
-        return results
-
-    def load_schema(self):
-        """
-        Download schema as map
-        :return:
-        """
-        query = self.config.get_schemas
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_domains(self):
-        query = self.config.get_domains
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_tables(self):
-        query = self.config.get_tables
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_fields(self):
-        query = self.config.get_fields
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_constraints(self):
-        query = self.config.get_constraints
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_index(self):
-        query = self.config.get_indices
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_constraint_details(self):
-        query = self.config.get_constraint_details
-        self.cursor.execute(query)
-        return self._get_result()
-
-    def load_index_details(self):
-        query = self.config.get_index_details
-        self.cursor.execute(query)
-        return self._get_result()
+from additions.classes import *
+import sqlite3  # Библиотека для работы с SQL
+import os.path  # Модуль для работы с путями
+from additions.sql_requests import *  # Модуль с sql-запросами
 
 
-    def load(self):
-        schemas = {}
-        for row in self.load_schema():
-            schema, schema_id = self.create_schema(row)
-            schemas[schema_id] = schema
-        tables = {}
-        for row in self.load_tables():
-            table, table_id, schema_id = self.create_table(row)
-            tables[table_id] = table
-            schemas[schema_id].tables.append(table)
+class DbdRam:
+    def __init__(self, file):
+        if not os.path.exists(file):
+            print("Файл " + file + " не существует!")
+            exit(1)
 
-        domains = {}
-        l_d = self.load_domains()
-        for row in l_d:
-            domain, domain_id = self.create_domain(row)
-            domains[domain_id] = domain
-        for schema in [schema for schema in schemas.values() if len(schema.tables) > 0]:
-            schema.domains = domains
+        self.connect = sqlite3.connect(file)
+        self.cursor = self.connect.cursor()
 
-        fields = {}
-        for row in self.load_fields():
-            field, field_id, table_id = self.create_field(row)
-            if table_id not in tables:
-                continue
-            tables[table_id].fields.append(field)
-            fields[field_id] = field
+        self._ram_schema()
+        self._ram_domains()
+        self._ram_tables()
+        self._ram_fields()
+        self._ram_indexes()
+        self._ram_constrains()
 
-        constraints = {}
-        for row in self.load_constraints():
-            constraint, constraint_id, table_id = self.create_constraint(row)
-            if table_id not in tables:
-                continue
-            tables[table_id].constraints.append(constraint)
-            constraints[constraint_id] = constraint
-            if constraint.reference in tables.keys():
-                constraint.reference = tables[constraint.reference].name;
+    # Создание схемы
+    def _ram_schema(self):
+        self.schema = Schema()
+        temp_schema = self.cursor.execute(SELECT_SCHEMA).fetchall()
 
+        self.schema.fulltext_engine = temp_schema[0][3]
+        self.schema.version = temp_schema[0][2]
+        self.schema.name = temp_schema[0][1]
+        self.schema.description = temp_schema[0][4]
 
-        indices = {}
-        for row in self.load_index():
-            index, index_id, table_id = self.create_index(row)
-            if table_id not in tables:
-                continue
-            tables[table_id].indexes.append(index)
-            indices[index_id] = index
+    # Создание доменов
+    def _ram_domains(self):
+        # Выбираем необходимый порядок нужных столбцов
+        num = [1, 2, 17, 9, 4, 8, 6, 5, 7, 10, 11, 12, 13, 14]
+        uid = 15
+        for temp_domain in self.cursor.execute(SELECT_DOMAIN):
+            domain = Domain()
+            k = 0
+            for attr in domain.domain_attr:
+                domain.__setattr__(attr, empty(temp_domain[num[k]]))
+                k += 1
 
-        constraint_details = {}
-        for row in self.load_constraint_details():
-            detail, detail_id, constraint_id = self.create_constraint_detail(row)
-            constraints[constraint_id].details.append(detail)
-            constraint_details[detail_id] = detail
-
-        index_details = {}
-        for row in self.load_index_details():
-            detail, detail_id, index_id = self.create_index_detail(row)
-            if index_id not in indices:
-                continue
-            indices[index_id].details.append(detail)
-            index_details[detail_id] = detail
-        return schemas
-
-
-
-    def create_schema(self, schema_row):
-        schema = Schema()
-        schema_id = None
-        for attr in schema_row:
-            if attr == 'name':
-                schema.name = schema_row[attr]
-            elif attr == 'fulltext_engine':
-                schema.fulltext_engine = schema_row[attr]
-            elif attr == 'version':
-                schema.version = schema_row[attr]
-            elif attr == 'description':
-                schema.descr = schema_row[attr]
-            elif attr == 'id':
-                schema_id = schema_row[attr]
+            if temp_domain[uid][0] == "U":
+                domain.__setattr__("unnamed", True)
             else:
-                raise ParseError("Unsupported attribute {}".format(attr), self)
-        return schema, schema_id
+                domain.__setattr__("unnamed", False)
 
-    def create_domain(self,attr_dict):
-        domain = Domain()
+            # Свойства домена
+            for props in domain.domain_props:  # заполняем свойства
+                domain.__setattr__(props, true(temp_domain[num[k]]))
+                k += 1
 
-        domain_id = None
-        for attr in attr_dict:
-            if attr == 'name':
-                domain.name = attr_dict[attr]
-            elif attr == 'data_type_name':
-                domain.type = attr_dict[attr]
-            elif attr == 'data_type_id':
-                domain.type = attr_dict[attr]
-            elif attr == 'align':
-                domain.align = attr_dict[attr]
-            elif attr == 'width':
-                domain.width = attr_dict[attr]
-            elif attr == 'char_length':
-                domain.char_length = attr_dict[attr]
-            elif attr == 'description':
-                domain.descr = attr_dict[attr]
-            elif attr == 'length':
-                domain.length = attr_dict[attr]
-            elif attr == 'scale':
-                domain.scale = attr_dict[attr]
-            elif attr == 'precision':
-                domain.precision = attr_dict[attr]
-            elif attr == 'case_sensitive':
-                domain.case_sensitive = attr_dict[attr]
-            elif attr == 'show_null':
-                domain.show_null = attr_dict[attr]
-            elif attr == 'show_lead_nulls':
-                domain.show_lead_nulls = attr_dict[attr]
-            elif attr == 'thousands_separator':
-                domain.thousands_separator = attr_dict[attr]
-            elif attr == 'summable':
-                domain.summable = attr_dict[attr]
-            elif attr == 'id':
-                domain_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return domain, domain_id
+            self.schema.domains.append(domain)
 
-    def create_table(self,attr_dict):
-        table = Table()
+    # Создание таблиц
+    def _ram_tables(self):
+        # Выбираем необходимый порядок нужных столбцов
+        num = [i for i in range(1, 11)]
+        for temp_table in self.cursor.execute(SELECT_TABLE):
+            table = Table()
+            k = 0
+            for attr in table.table_attr:
+                table.__setattr__(attr, empty(temp_table[num[k]]))
+                k += 1
 
-        table_id = None
-        schema_id = None
+            # Свойства таблицы
+            for props in table.table_props:  # заполняем свойства
+                table.__setattr__(props, true(temp_table[num[k]]))
+                k += 1
 
-        for attr in attr_dict:
-            if attr == 'name':
-                table.name = attr_dict[attr]
-            elif attr == 'description':
-                table.descr = attr_dict[attr]
-            elif attr == 'temporal_mode':
-                table.ht_table_flags = attr_dict[attr]
-            elif attr == 'access_level':
-                table.access_level = attr_dict[attr]
-            elif attr == 'can_add':
-                table.add = attr_dict[attr]
-            elif attr == 'can_edit':
-                table.edit = attr_dict[attr]
-            elif attr == 'can_delete':
-                table.delete = attr_dict[attr]
-            elif attr == 'means':
-                table.means = attr_dict[attr]
-            elif attr == 'schema_id':
-                schema_id = attr_dict[attr]
-            elif attr == 'id':
-                table_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return table, table_id, schema_id
+            self.schema.tables.append(table)
 
-    def create_field(self,attr_dict):
-        field = Field()
+    # Создание полей
+    def _ram_fields(self):
+        # Выбираем необходимый порядок нужных столбцов
+        num = [i for i in range(3, 14)]
+        for temp_field in self.cursor.execute(SELECT_FIELD):
+            field = Field()
+            k = 0
+            for attr in field.field_attr:
+                field.__setattr__(attr, empty(temp_field[num[k]]))
+                k += 1
 
-        field_id = None
-        table_id = None
+            field.domain = self.schema.domains[temp_field[5] - 1]
 
-        for attr in attr_dict:
-            if attr == 'name':
-                field.name = attr_dict[attr]
-            elif attr == 'russian_short_name':
-                field.rname = attr_dict[attr]
-            elif attr == 'domain_name':
-                field.domain = attr_dict[attr]
-            elif attr == 'type':
-                field.type = attr_dict[attr]
-            elif attr == 'description':
-                field.descr = attr_dict[attr]
-            elif attr == 'can_input':
-                field.input = attr_dict[attr]
-            elif attr == 'can_edit':
-                field.edit = attr_dict[attr]
-            elif attr == 'show_in_grid':
-                field.show_in_grid = attr_dict[attr]
-            elif attr == 'show_in_details':
-                field.show_in_details = attr_dict[attr]
-            elif attr == 'is_mean':
-                field.is_mean = attr_dict[attr]
-            elif attr == 'autocalculated':
-                field.autocalculated = attr_dict[attr]
-            elif attr == 'required':
-                field.required = attr_dict[attr]
-            elif attr == 'id':
-                field_id = attr_dict[attr]
-            elif attr == 'table_id':
-                table_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return field, field_id, table_id
+            # Свойства поля
+            for props in field.field_props:  # заполняем свойства
+                field.__setattr__(props, true(temp_field[num[k]]))
+                k += 1
 
-    def create_constraint(self,attr_dict):
-        constraint = Constraint()
+            self.schema.tables[temp_field[1] - 1].fields.append(field)
 
-        if attr_dict is None:
-            return constraint
+    # Создание индексов
+    def _ram_indexes(self):
+        for temp_index in self.cursor.execute(SELECT_INDEX):
+            index = Index()
+            index.name = empty(temp_index[2])
+            index.field = empty(temp_index[12])
+            index.expression = empty(temp_index[10])
 
-        constraint_id = None
-        table_id = None
+            # Свойства индекса
+            index.local = true(temp_index[3])
+            index.uniqueness = True if temp_index[4] == 'U' else None
+            index.fulltext = True if temp_index[4] == 'T' else None
+            index.descend = true(temp_index[11])
 
-        for attr in attr_dict:
-            if attr == 'name':
-                constraint.name = attr_dict[attr]
-            elif attr == 'constraint_type':
-                constraint.kind = attr_dict[attr]
-            elif attr == 'items':
-                detail = ConstraintDetail()
-                detail.value = attr_dict[attr]
-                constraint.details.append(detail)
-            elif attr == 'reference':
-                constraint.reference = attr_dict[attr]
-            elif attr == 'unique_key_id':
-                constraint.constraint = attr_dict[attr]
-            elif attr == 'expression':
-                constraint.expression = attr_dict[attr]
-            elif attr == 'has_value_edit':
-                constraint.has_value_edit = attr_dict[attr]
-            elif attr == 'cascading_delete':
-                constraint.cascading_delete = attr_dict[attr]
-            elif attr == 'id':
-                constraint_id = attr_dict[attr]
-            elif attr == 'table_id':
-                table_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return constraint, constraint_id, table_id
+            self.schema.tables[temp_index[1] - 1].indexes.append(index)
 
-    def create_index(self,attr_dict):
-        index = Index()
+    # Создание ограничений
+    def _ram_constrains(self):
+        # Выбираем необходимый порядок нужных столбцов
+        num = [2, 3, 15, 17, 5]
+        for temp_constrain in self.cursor.execute(SELECT_CONSTRAIN):
+            constrain = Constraint()
+            k = 0
+            for attr in constrain.constraint_attr:
+                constrain.__setattr__(attr, empty(temp_constrain[num[k]]))
+                k += 1
 
-        if attr_dict is None:
-            return index
+            constrain.kind = "PRIMARY" if temp_constrain[3] == 'P' else 'FOREIGN'
 
-        index_id = None
-        table_id = None
+            # Свойства ограничения
+            constrain.has_value_edit = true(temp_constrain[7])
+            constrain.full_cascading_delete = True if temp_constrain[8] == 'TRUE' else None
+            constrain.cascading_delete = True if temp_constrain[8] == 'FALSE' else None
 
-        for attr in attr_dict:
-            if attr == 'name':
-                index.name = attr_dict[attr]
-            elif attr == 'field':
-                detail = IndexDetail()
-                detail.value = attr_dict[attr]
-                index.details.append(detail)
-            elif attr == 'kind':
-                index.kind = attr_dict[attr]
-            elif attr == 'local':
-                index.local = attr_dict[attr]
-            elif attr == 'uniqueness':
-                index.uniqueness = attr_dict[attr]
-            elif attr == 'fulltext':
-                index.fulltext = attr_dict[attr]
-            elif attr == 'id':
-                index_id = attr_dict[attr]
-            elif attr == 'table_id':
-                table_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return index, index_id, table_id
+            self.schema.tables[temp_constrain[1] - 1].constraints.append(constrain)
 
-    def create_constraint_detail(self,attr_dict):
-        detail = ConstraintDetail()
 
-        detail_id = None
-        constraint_id = None
+def none(value):
+    return None if not value else value
 
-        for attr in attr_dict:
-            if attr == 'field_name':
-                detail.value = attr_dict[attr]
-            elif attr == 'id':
-                detail_id = attr_dict[attr]
-            elif attr == 'constraint_id':
-                constraint_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return detail, detail_id, constraint_id
 
-    def create_index_detail(self,attr_dict):
-        detail = IndexDetail()
+def empty(value):
+    return value if value is not "" else None
 
-        detail_id = None
-        index_id = None
 
-        for attr in attr_dict:
-            if attr == 'field_name':
-                detail.value = attr_dict[attr]
-            elif attr == 'expression':
-                detail.expression = attr_dict[attr]
-            elif attr == 'descend':
-                detail.descend = attr_dict[attr]
-            elif attr == 'id':
-                detail_id = attr_dict[attr]
-            elif attr == 'index_id':
-                index_id = attr_dict[attr]
-            else:
-                raise ParseError("Unsupported attribute {}".format(attr),self)
-        return detail, detail_id, index_id
-
+def true(value):
+    return True if value else False

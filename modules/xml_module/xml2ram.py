@@ -1,329 +1,166 @@
-import xml.dom.minidom as dom
-
-from modules.ram_module.ram_structure import Domain, Table, Field, Index, Constraint, Schema, ConstraintDetail, IndexDetail
-from utils.exceptions import ParseError
+from xml.dom.minidom import parse  # Загружаем модуль minidom - встроенный инструмент XML парсинга
+from additions.classes import *  # Загружаем классы метаданных
 
 
-class Parser:
-    """
-    Create Ram representation from xml file
-    """
-    def __init__(self, xml_file_path):
-        self.xml = dom.parse(xml_file_path)
+class XmlParser:
+    def __init__(self, file):  # На вход подаем путь к конвертируемому файлу
+        self.parser = parse(file)
+        self.schema = Schema()  # Загружаем в парсер атрибуты класса schema
 
-    def parseXml2Ram(self):
-        """
-        Parse xml to ram
-        :return:
-        """
-        schema = self._parseSchema()
-        schema.domains = self._parseDomains()
-        schema.tables = self._parseTables()
+    # Основной метод (парсинга загруженного файла XML)
+    def make_ram(self):
+        self.get_schema_data()
+        return self.schema
 
-        return schema
+    # Метод получения данных для главного класса схемы
+    def get_schema_data(self):
+        try:  # Пробуем получить атрибуты, списки доменов и таблиц схемы
+            self.get_schema_attributes()
+            self.get_domains()
+            self.get_tables()
+        except ValueError:
+            print("Ошибка обработки файла.")
+            exit(-1)
 
+    # Метод записи в память атрибутов схемы
+    def get_schema_attributes(self):
+        dbd_schema = self.parser.getElementsByTagName("dbd_schema")[0]
 
-    def _parseSchema(self):
-        """
-        Create schema from xml
-        :param xml: xml.dom.minidom.Document
-        :return: Schema
-        """
-        schema = Schema()
-        attributes = self.xml.documentElement.attributes.items()
-        for name, val in attributes:
-                if name.lower() == "name":
-                        schema.name = val
-                elif name.lower() == "version":
-                        schema.version = val
-                elif name.lower() == "fulltext_engine":
-                    schema.fulltext_engine = val
-                elif name.lower() == "description":
-                    schema.descr = val
-                else:
-                    raise ParseError("Invalid attribute name \"{}\"".format(name), self)
-        return schema
+        # Инициализируем список атрибутов
+        attribs = dbd_schema.attributes
+        # Проходим по списку атрибутов главной схемы XML, записывая их в память
+        for i in range(attribs.length):  # Проходим по атрибутам xdb-файла
+            attrib = attribs.item(i)
+            for attr in Schema.schema_attr:  # Проходим по атрибутам класса Schema
+                if attrib.name == attr:  # Если они равны, то записываем в ram-представление
+                    setattr(self.schema, attr, attrib.value)
 
-    def _parseDomains(self):
-        """
+    # Метод записи в память атрибутов доменов
+    def get_domains(self):
+        for domain_element in self.parser.getElementsByTagName("domain"):
+            domain = Domain()  # Загружаем атрибуты класса Domain
 
-        Create list of domains (objects Domain)
+            attribs = domain_element.attributes  # Инициализируем список атрибутов
+            for i in range(attribs.length):
+                attrib = attribs.item(i)
+                for attr in Domain.domain_attr:
+                    if attrib.name == attr:
+                        setattr(domain, attr, attrib.value)
+                # Обработка списка props
+                for p in attrib.value.split(","):
+                    p = p.strip()
+                    for pi in Domain.domain_props:  # Проходим по перечню props
+                        if p == pi:
+                            setattr(domain, pi, True)  # Если найден существующий элемент props, заносим его в список
 
-        :param xml: xml.dom.minidom.Document
-        :return:
-        """
-        list = []
-        domain_parent = self.xml.getElementsByTagName("domain")
-        for item in domain_parent:
-            domain = Domain()
-            attributes = item.attributes.items()
-            for name, val in attributes:
-                if name.lower() == "name":
-                    domain.name = val
-                elif name.lower() == "description":
-                    domain.descr = val
-                elif name.lower() == "type":
-                    domain.type = val
-                elif name.lower() == "align":
-                    domain.align = val
-                elif name.lower() == "width":
-                    domain.width = val
-                elif name.lower() == "precision":
-                    domain.precision = val
-                elif name.lower() == "char_length":
-                    domain.char_length = val
-                elif name.lower() == "length":
-                    domain.length = val
-                elif name.lower() == "scale":
-                    domain.scale = val
-                elif name.lower() == "props":
-                    for prop in val.split(", "):
-                        if prop == "show_null":
-                            domain.show_null = True
-                        elif prop == "summable":
-                            domain.summable = True
-                        elif prop == "case_sensitive":
-                            domain.case_sensitive = True
-                        elif prop == "show_lead_nulls":
-                            domain.show_lead_nulls = True
-                        elif prop == "thousands_separator":
-                            domain.thousands_separator = True
-                        else:
-                            raise ParseError("Invalid format of propertiess: \"{}\"".format(val), self)
-            list.append(domain)
-        return list
+            self.schema.domains.append(domain)  # Помещаем домен в схему
 
+    # Метод записи в память атрибутов таблиц
+    def get_tables(self):
+        # Сохраняем атрибуты таблиц в тег table
+        for table_element in self.parser.getElementsByTagName("table"):
+            table = Table()  # Загружаем атрибуты класса Table
 
-    def _parseTables(self):
-        """
-        Create list of object Table
+            # Запись атрибутов в таблицу
+            attribs = table_element.attributes
+            for i in range(attribs.length):
+                attrib = attribs.item(i)
+                for attr in Table.table_attr:
+                    if attrib.name == attr:
+                        setattr(table, attr, attrib.value)
+                for p in attrib.value.split(","):
+                    p = p.strip()
+                    for pi in Table.table_props:
+                        if p == pi:
+                            setattr(table, pi, True)
 
-        Args:
-            xml : xml.dom.minidom.Document
+            # Заполнение полей, ограничений и индексов таблицы
+            for field_element in table_element.getElementsByTagName("field"):
+                table.fields.append(self.get_field(field_element, table.name))
 
-        Return: list<Table>
+            for constraint_element in table_element.getElementsByTagName("constraint"):
+                table.constraints.append(self.get_constraint(constraint_element, table.name))
 
-        """
-        list = []
-        xml_tables = self.xml.getElementsByTagName("table")
-        for item in xml_tables:
-            table = self._parseTable(item)
-            table.fields = self._parseFields(item)
-            table.indexes = self._parseIndexes(item)
-            table.constraints = self._parseConstraints(item)
-            list.append(table)
+            for index_element in table_element.getElementsByTagName("index"):
+                table.indexes.append(self.get_index(index_element, table.name))
 
-        return list
+            self.schema.tables.append(table)  # Помещаем таблицу в схему
 
-    def _parseTable(self,item):
-        """
+    # Метод записи в память атрибутов полей
+    def get_field(self, field_element, table_name):
+        field = Field()  # Загружаем атрибуты класса Field
+        domain = Domain()  # Загружаем атрибуты класса Domain в составе Field
 
-        Parse table from xml
-
-        :param xml: xml.dom.minidom.Document
-        :return:
-        """
-
-        table = Table()
-        attributes = item.attributes.items()
-        for name, val in attributes:
-            if name.lower() == "name":
-                table.name = val
-            elif name.lower() == "description":
-                table.descr = val
-            elif name.lower() == "props":
-                for prop in val.split(", "):
-                    if prop == "add":
-                        table.add = True
-                    elif prop == "edit":
-                        table.edit = True
-                    elif prop == "delete":
-                        table.delete = True
+        attribs = field_element.attributes
+        for i in range(attribs.length):
+            attrib = attribs.item(i)
+            for attr in Domain.domain_attr:
+                if attrib.name == 'domain.'+attr:
+                    setattr(domain, attr, attrib.value)
+                    if attrib.name == 'domain.type':
+                        setattr(domain, "name", "")
+                        setattr(domain, "unnamed", True)
+            # Обработка списка props полей
+            for p in attrib.value.split(","):
+                p = p.strip()
+                for pi in Domain.domain_props:  # Проходим по перечню props
+                    if p == pi:
+                        setattr(domain, pi,True)
+            for attr in Field.field_attr:
+                if attrib.name == attr:
+                    if attr != "domain":
+                        setattr(field, attr, attrib.value)
                     else:
-                        raise ParseError("Invalid format of propertiess: \"{}\" ".format(val), self)
-        return table
-
-
-    def _parseFields(self, xml):
-        """
-
-        Create list of fields (objects Field)
-
-        :param xml:
-        :return:
-        """
-        if xml.nodeName != "table":
-            raise ParseError("Element is not a table","_parseFields")
-
-        list = []
-        xml_fields = xml.getElementsByTagName("field")
-        for item in xml_fields:
-            field = Field()
-            attributes = item.attributes.items()
-            for name, val in attributes:
-                if name.lower() == "name":
-                    field.name = val
-                elif name.lower() == "rname":
-                    field.rname = val
-                elif name.lower() == "domain":
-                    field.domain = val
-                elif name.lower() == "props":
-                    for prop in val.split(", "):
-                        if prop == "input":
-                            field.input = True
-                        elif prop == "edit":
-                            field.edit = True
-                        elif prop == "show_in_grid":
-                            field.show_in_grid = True
-                        elif prop == "show_in_details":
-                            field.show_in_details = True
-                        elif prop == "is_mean":
-                            field.is_mean = True
-                        elif prop == "autocalculated":
-                            field.autocalculated = True
-                        elif prop == "required":
-                            field.required = True
+                        taken_domain = self.schema.domain_exists(attrib.value)
+                        if taken_domain is not None:
+                            domain = taken_domain
                         else:
-                            raise ParseError("Invalid format of propertiess: \"{}\"".format(val), self)
-                elif name.lower() == "description":
-                    field.descr = val
-                else:
-                    raise ParseError("Invalid attribute name \"{}\"".format(name), self)
-            list.append(field)
+                            raise ValueError("Ошибка: домен не найден.")
+            # Обработка списка props доменов
+            for p in attrib.value.split(","):
+                p = p.strip()
+                for pi in Field.field_props:
+                    if p == pi:
+                        setattr(field, pi, True)
 
-        return list
+        field.domain = domain   # Помещаем домен в поле
 
+        return field
 
-    def _parseIndexes(self, xml):
-        """
+    # Метод записи в память атрибутов ограничений
+    @staticmethod  # Объявляем метод статическим
+    def get_constraint(constraint_element, table_name):
+        constraint = Constraint()  # Загружаем атрибуты класса Constraint
 
-        Create list of indexes (object Index)
+        attribs = constraint_element.attributes
+        for i in range(attribs.length):
+            attrib = attribs.item(i)
+            for attr in Constraint.constraint_attr:
+                if attrib.name == attr:
+                    setattr(constraint, attr, attrib.value)
+            for p in attrib.value.split(","):
+                p = p.strip()
+                for pi in Constraint.constraint_props:
+                    if p == pi:
+                        setattr(constraint, pi, True)
 
-        :param xml:
-        :return:
-        """
-        if xml.nodeName != "table":
-            raise TypeError("Element is not a table")
+        return constraint
 
-        list = []
-        xml_indexes = xml.getElementsByTagName("index")
-        for item in xml_indexes:
-            tmp = Index()
+    # Метод записи в память атрибутов индексов
+    @staticmethod   # Объявляем метод статическим
+    def get_index(index_element, table_name):
+        index = Index()  # Загружаем атрибуты класса Index
 
-            attributes = item.attributes.items()
-            for name, val in attributes:
-                if name.lower() == "field":
-                    detail = IndexDetail()
-                    detail.value = val
+        attribs = index_element.attributes
+        for i in range(attribs.length):
+            attrib = attribs.item(i)
+            for attr in Index.index_attr:
+                if attrib.name == attr:
+                    setattr(index, attr, attrib.value)
+            for p in attrib.value.split(","):
+                p = p.strip()
+                for pi in Index.index_props:
+                    if p == pi:
+                        setattr(index, pi, True)
 
-                    tmp.details.append(detail)
-                elif name.lower() == "items":
-                    tmp.items = val
-                elif name.lower() == "name":
-                    tmp.items = val
-                elif name.lower() == "props":
-                    for prop in val.split(", "):
-                        if prop == 'local':
-                            tmp.local = True
-                        if prop == "fulltext":
-                            tmp.kind = "fulltext"
-                        elif prop == "uniqueness":
-                            tmp.kind = "uniqueness"
-                        else:
-                            raise ParseError("Invalid format of propertiess: \"{}\"".format(val), self)
-                else:
-                    raise ParseError("Invalid attribute name \"{}\"".format(name), self)
-
-
-            for detail_node in item.childNodes:
-                if detail_node.tagName != 'item':
-                    raise Exception()
-                detail = self._create_index_detail(detail_node._attrs)
-                tmp.details.append(detail)
-            list.append(tmp)
-        return list
-
-    def _parseConstraints(self, xml):
-        """
-
-        Create list of constraint (objects Constraint)
-
-        :param xml:
-        :return:
-        """
-        if xml.nodeName != "table":
-            raise ParseError("Element is not a table","_parseConstraints")
-
-        list = []
-        xmlConstraints = xml.getElementsByTagName("constraint")
-        for item in xmlConstraints:
-            constraint = Constraint()
-            attributes = item.attributes.items()
-            for name, val in attributes:
-                if name.lower() == "name":
-                    constraint.name = val
-                elif name.lower() == "kind":
-                    constraint.kind = val
-                elif name.lower() == "items":
-                    detail = ConstraintDetail()
-                    detail.value = val
-                    constraint.details.append(detail)
-                    constraint.items = val
-                elif name.lower() == "props":
-                    for prop in val.split(", "):
-                        if prop == "has_value_edit":
-                            constraint.has_value_edit = True
-                        elif prop == "cascading_delete":
-                            constraint.cascading_delete = False
-                        elif prop == "full_cascading_delete":
-                            constraint.cascading_delete = True
-                        else:
-                            raise ParseError("Invalid format of propertiess: \"{}\"".format(val), self)
-                elif name.lower() == "reference":
-                    constraint.reference = val
-                elif name.lower() == 'expression':
-                    constraint.expression = val
-                else:
-                    raise ParseError("Invalid attribute name \"{}\"".format(name), self)
-            list.append(constraint)
-
-            for detail_node in item.childNodes:
-                if detail_node.tagName != 'item':
-                    raise ParseError("item not found")
-                detail = self._create_constraint_detail(detail_node._attrs)
-                constraint.details.append(detail)
-
-        return list
-
-    def _create_constraint_detail(self, attr_dict):
-        """
-        Create detail of constraint
-        :param attr_dict:
-        :return:
-        """
-        detail = ConstraintDetail()
-        for attr, val in attr_dict:
-            if attr == 'value':
-                detail.value = val
-            else:
-                raise ParseError("Invalid attribute name \"{}\"".format(attr),self)
-        return detail
-
-    def _create_index_detail(self, attr_dict):
-        """
-        Create detail of index
-        :param attr_dict:
-        :return:
-        """
-        detail = IndexDetail()
-        for attr, val in attr_dict:
-            if attr == 'value':
-                detail.value = val
-            elif attr == 'expression':
-                detail.expression = val
-            elif attr == 'descend':
-                detail.descend = val
-            else:
-                raise ParseError("Invalid attribute name \"{}\"".format(attr), self)
-        return detail
-
+        return index
