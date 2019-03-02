@@ -1,6 +1,6 @@
 import xml.dom.minidom as dom
 
-from ram_module.ram_structure import Domain, Table, Field, Index, Constraint, Schema, ConstraintDetail, IndexDetail
+from modules.ram_module.ram_structure import Domain, Table, Field, Index, Constraint, Schema, ConstraintDetail, IndexDetail
 from utils.exceptions import ParseError
 
 
@@ -159,7 +159,6 @@ class Parser:
         xml_fields = xml.getElementsByTagName("field")
         for item in xml_fields:
             field = Field()
-            domain = Domain()
             attributes = item.attributes.items()
             for name, val in attributes:
                 if name.lower() == "name":
@@ -188,17 +187,8 @@ class Parser:
                             raise ParseError("Invalid format of propertiess: \"{}\"".format(val), self)
                 elif name.lower() == "description":
                     field.descr = val
-                elif name.lower() == "domain.char_length":
-                    domain.char_length = val
-                elif name.lower() == "domain.precision":
-                    domain.precision = val
-                elif name.lower() == "domain.scale":
-                    domain.scale = val
-                elif name.lower() == "domain.type":
-                    domain.type = val
                 else:
                     raise ParseError("Invalid attribute name \"{}\"".format(name), self)
-            field.domain = domain
             list.append(field)
 
         return list

@@ -1,4 +1,6 @@
 import unittest
+import sys
+sys.path.append('../')
 
 from codecs import open as open
 from db import sqlite_queries
@@ -9,7 +11,7 @@ from modules.ram_module.ram2xml import Converter
 from modules.xml_module.xml2ram import Parser
 
 
-class ParsingTest(unittest.TestCase):
+class TestParsing(unittest.TestCase):
     def test_parsing(self):
 
         """

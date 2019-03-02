@@ -1,7 +1,7 @@
 import postgresql
 
 from db.config import postgressql_url, result_path
-from ram_module.ram_structure import Schema,Domain,Table,Field,\
+from modules.ram_module.ram_structure import Schema,Domain,Table,Field,\
     Constraint,Index
 from db.postgres_util import get_type_in_postgres
 from utils.exceptions import TypeNotFoundException
@@ -19,7 +19,7 @@ class DBInitialisator:
         scripts.append('BEGIN TRANSACTION;')
         scripts.append(self.create_schema_ddl(schema))
         if schema.domains:
-            for d in schema.domains.values():
+            for d in schema.domains:
                 ddl = self.create_domain_ddl(d, schema)
                 scripts.append(ddl)
 
@@ -110,7 +110,7 @@ class DBInitialisator:
         ind = []
         ddl = ""
         for i in table.indexes:
-            if i.kind == "uniqueness":
+            if i.kind == "uniqueness" and i.items:
                 ind.append(i.items)
             else:
                 ddl+="""CREATE INDEX  ON {}."{}" ({});\n""".format(

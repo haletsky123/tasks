@@ -6,8 +6,8 @@ from modules.ram_module.ram2xml import Converter
 # DOWNLOADING DATA FROM DBD TO XML
 
 parser = argparse.ArgumentParser(description='DOWNLOADING DATA FROM DBD TO XML')
-parser.add_argument('--db', type=str, help="Path to db file")
-parser.add_argument('--xml', type=str, help="Path to xml file")
+parser.add_argument('--db', type=str, help="Path to db file", default="test/db.db")
+parser.add_argument('--xml', type=str, help="Path to xml file", default="test/tasks.xml")
 
 arguments = parser.parse_args()
 

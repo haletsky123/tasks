@@ -12,7 +12,7 @@ from modules.xml_module.xml2ram import Parser
 
 parser = argparse.ArgumentParser(description='CREATING EMPTY POSTGRESQL DATABASE')
 parser.add_argument('--db', type=str, help="Path to db file")
-parser.add_argument('--xml', type=str, help="Path to xml file")
+parser.add_argument('--xml', type=str, help="Path to xml file", default="resources\\tasks.xml")
 parser.add_argument('--ddl_path',type=str, help="Path to saved ddl instructions",default=result_path)
 args = parser.parse_args()
 

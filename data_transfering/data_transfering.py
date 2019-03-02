@@ -27,26 +27,32 @@ class DataTransfering:
         self.pg_con = postgresql.open(self.pg_server +"/"+ self.db_name.lower())
 
     def start(self,schemas):
-        self.pg_con.execute('BEGIN TRANSACTION;')
-        self.pg_con.execute('SET CONSTRAINTS ALL DEFERRED;')
+        _MAX_ROWS = 10000
         for schema in schemas.values():
             for table in schema.tables:
                 self.cursor.execute('BEGIN TRANSACTION;')
                 self.cursor.execute(self.select_query(schema,table))
                 rows = self.cursor.fetchall()
                 query = ''
+                self.pg_con.execute('BEGIN TRANSACTION;')
+                self.pg_con.execute('SET CONSTRAINTS ALL DEFERRED;')
                 for row in rows:
-
-                    s ="alter table {}.\"{}\" disable trigger all;".format(schema.name,table.name)
+                    if rows.index(row) % _MAX_ROWS == 0 and rows.index(row) != 0:
+                        self.pg_con.execute(query)
+                        self.pg_con.execute('COMMIT TRANSACTION;')
+                        query = ''
+                        self.pg_con.execute('BEGIN TRANSACTION;')
+                        self.pg_con.execute('SET CONSTRAINTS ALL DEFERRED;')
+                    s = "alter table {}.\"{}\" disable trigger all;".format(schema.name,table.name)
                     s += self.insert_query(schema, table, row) + ";\n"
-                    s+="alter table {}.\"{}\" enable trigger all;".format(schema.name,table.name)
-                    print(s)
-                    query+= s
-
-                    self.pg_con.execute(s)
+                    s += "alter table {}.\"{}\" enable trigger all;".format(schema.name,table.name)
+                    # print(s)
+                    query += s
+                if query!='':
+                    self.pg_con.execute(query)
+                    self.pg_con.execute('COMMIT TRANSACTION;')
                 self.cursor.execute('COMMIT;')
 
-        self.pg_con.execute('COMMIT TRANSACTION;')
 
     def select_query(self,schema,table):
         fields = []
